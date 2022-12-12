@@ -264,7 +264,7 @@ async def check_loading(update):
 
 
 def start_browser():
-    # PAGE.goto("https://chat.openai.com/")
+    PAGE.goto("https://chat.openai.com/")
     if not is_logged_in():
         print("Please log in to OpenAI Chat")
         print("Press enter when you're done")
