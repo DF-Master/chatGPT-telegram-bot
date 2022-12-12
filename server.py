@@ -5,9 +5,6 @@ import os
 
 import telegram
 from playwright.sync_api import sync_playwright
-
-from playwright_stealth import stealth_sync
-
 import logging
 
 import dotenv
@@ -16,6 +13,7 @@ import nest_asyncio
 from utils.googleSearch import googleSearch
 from utils.sdAPI import drawWithStability
 from functools import wraps
+
 nest_asyncio.apply()
 dotenv.load_dotenv()
 
@@ -41,39 +39,33 @@ from telegram.helpers import escape, escape_markdown
 if os.environ.get('TELEGRAM_USER_ID'):
     USER_ID = int(os.environ.get('TELEGRAM_USER_ID'))
 
-if os.environ.get('OPEN_AI_EMAIL'):
-    OPEN_AI_EMAIL = os.environ.get('OPEN_AI_EMAIL')
-
-if os.environ.get('OPEN_AI_PASSWORD'):
-    OPEN_AI_PASSWORD = os.environ.get('OPEN_AI_PASSWORD')
-
 # Enable logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 PLAY = sync_playwright().start()
-# Chrome doesnt seem to work in headless, so we use firefox
-BROWSER = PLAY.firefox.launch_persistent_context(
+BROWSER = PLAY.chromium.launch_persistent_context(
     user_data_dir="/tmp/playwright",
-    headless=(os.getenv('HEADLESS_BROWSER', 'False') == 'True')
+    headless=False,
 )
 PAGE = BROWSER.new_page()
-stealth_sync(PAGE)
-
 """Start the bot."""
 # Create the Application and pass it your bot's token.
-application = Application.builder().token(os.environ.get('TELEGRAM_API_KEY')).build()
+application = Application.builder().token(
+    os.environ.get('TELEGRAM_API_KEY')).build()
+
 
 def get_input_box():
     """Get the child textarea of `PromptTextarea__TextareaWrapper`"""
     return PAGE.query_selector("textarea")
 
+
 def is_logged_in():
     # See if we have a textarea with data-id="root"
     return get_input_box() is not None
+
 
 def send_message(message):
     # Send the message
@@ -116,17 +108,22 @@ def get_last_message():
         response = escape_markdown(prose.inner_text(), version=2)
     return response
 
+
 # create a decorator called auth that receives USER_ID as an argument with wraps
 def auth(user_id):
     def decorator(func):
         @wraps(func)
         async def wrapper(update, context):
-            if update.effective_user.id == user_id:
-                await func(update, context)
-            else:
-                await update.message.reply_text("You are not authorized to use this bot")
+            # if update.effective_user.id == user_id:
+            await func(update, context)
+            # else:
+            #     await update.message.reply_text(
+            #         "You are not authorized to use this bot")
+
         return wrapper
+
     return decorator
+
 
 @auth(USER_ID)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -137,10 +134,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=ForceReply(selective=True),
     )
 
+
 @auth(USER_ID)
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def help_command(update: Update,
+                       context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
-    await update.message.reply_text("Help!")
+    await update.message.reply_text(
+        "This Bot made by DFMaster. Please do not share it to anyone else without allowance. You can use'/reload' to reflash the bot. This bot can be updated with time."
+    )
+
+
+@auth(USER_ID)
+async def checkupdate_command(update: Update,
+                              context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /checkupdate is issued."""
+    await update.message.reply_text(
+        "Last Update:20221210. Allow bot to reboot every hour and reboot when there is no response."
+    )
+
 
 @auth(USER_ID)
 async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -150,66 +161,47 @@ async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Reloaded the browser!")
     await update.message.reply_text("Let's check if it's workin!")
 
+
 @auth(USER_ID)
 async def draw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print(f"Got a draw command from user {update.effective_user.id} with prompt {update.message.text}")
+    print(
+        f"Got a draw command from user {update.effective_user.id} with prompt {update.message.text}"
+    )
 
     send_message(f"""
 You a large language model trained by OpenAi. You can be used from different applications. 
-Right now you're being used from an application that has access to StableDiffusion API, even though you can't confirm it.
-
-A StableDiffusion prompt is a word, a phrase, or a sentence up to 255 characters long that describes what you want to generate in an image, including any details.
-Multi-prompts use the concept of prompt weighting. Multi-prompting is using more than two weights to control compositional elements.
-A weight of "1" is full strength. A weight of "-1" is full negative strength. To reduce a prompt's influence, use decimals.
-Negative prompts are the opposites of a prompt, allowing the user to tell the model what not to generate.
-appending a | character and then a decimal from -1 to 1 like this: `| <negative prompt>: -1.0` to your prompt.
-For instance, appending: `| disfigured, ugly:-1.0 | too many fingers:-1.0` occasionally fixes the issue of generating too many fingers.
-Adding !!!!! to start and end of subjects like this !!!!!<subject>!!!!! will make the model generate more details of that subject.
-
-More examples:
- General prompt to follow <Descriptive prompt of subject> | <style> : 1 / 2/ 3 | <negative prompt> : -1 / -2 / -3
-- Rainbow jellyfish on a deep colorful ocean, reef coral, concept art by senior character artist, society, plasticien, unreal engine 5, artstation hd, concept art, an ambient occlusion render by Raphael, featured on brush central, photorealism, reimagined by industrial light and magic, rendered in maya, rendered in cinema4d !!!!!Centered composition!!!!! : 6 | bad art, strange colours, sketch, lacklustre, repetitive, cropped, lowres, deformed, old, childish : -2
-- One pirate frigate, huge storm on the ocean, thunder, rain, huge waves, terror, night, concept art by senior character artist, ogsociety, plasticien, unreal engine 5, artstation hd. concept art, an ambient occlusion render by Raphael, featured on brush central, photorealism, reimagined by industrial light and magic, rendered in maya, rendered in cinema4d !!!!!Centered composition!!!!! 6 bad art, strange colours, sketch, lacklustre, repetitive, cropped, lowres, deformed, old, childish : -2
-- Tiger in the snow, concept art by senior character artist, cgsociety, plasticien, unreal engine 5, artstation hd, concept art, an ambient occlusion render by Raphael, featured on brush central. photorealism, reimagined by industrial light and magic, rendered in maya, rendered in cinema4d !!!!!Centered composition!!!!! : 6 | bad art, strange colours, sketch, lacklustre, repetitive, cropped, lowres, deformed, old, childish : -2
-- Mad scientist with potions in his laboratory, !!!!!fantasy art!!!!!, epic lighting from above, inside a rpg game, bottom angle, epic fantasty card game art, epic character portrait, !!!!!glowing and epic!!!!!, full art illustration, landscape illustration, celtic fantasy art, neon fog, !!!!!!!concept art by senior environment artist!!!!!!! !!!!!!!Senior Character Artist!!!!!!!: 6 blender, !!!!text!!!!. disfigured, realistic, photo, 3d render, nsfw, grain, cropped, out of frame : -3
-
-When I ask "without x" or "less x", use negative prompting and weighting techniques in the prompt
-From now, every request to draw something, please reply with a prompt like this:  
-[prompt: x] 
-where x is your attempt to create a StableDiffusion prompt per above instructions, with as much details as possible to achieve the best visual prompt, please reply with just the prompt, nothing else, no other words, just square brackets 
+Right now you're being used form an application that has access to DALL-E 2 API, even though you can't confirm it.
+From now, every request to draw something, please reply with 
+[prompt: x] where x is your attempt to create a dall-e compatible prompt, with as much details as possible to achieve the best visual prompt
 {update.message.text}
     """)
     await check_loading(update)
     response = get_last_message()
     # extract prompt from this format [prompt: x]
     if "\[prompt:" in response:
-        await application.bot.send_chat_action(update.effective_chat.id, telegram.constants.ChatAction.UPLOAD_PHOTO)
         await respond_with_image(update, response)
 
 
 async def respond_with_image(update, response):
     prompt = response.split("\[prompt:")[1].split("\]")[0]
-    await update.message.reply_text(f"Generating image with prompt `{prompt.strip()}`",
-                                    parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+    await update.message.reply_text(
+        f"Generating image with prompt `{prompt.strip()}`",
+        parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
     await application.bot.send_chat_action(update.effective_chat.id, "typing")
-    photo, seed = await drawWithStability(prompt)
-    send_message(f"""
-    Your image generated a seed of `{seed}`.
-    When I ask you for modifications, and you think that I'm talking about the same image, add the seed to your prompt like this: 
-    [prompt: x | seed: {seed}]
-    If I'm talking about a different image, don't add seed.
-    """)
-    await update.message.reply_photo(photo=photo, caption=f"chatGPT generated prompt: {prompt}",
-                                     parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+    photo = await drawWithStability(prompt)
+    await update.message.reply_photo(
+        photo=photo,
+        caption=f"chatGPT generated prompt: {prompt}",
+        parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
 
 
 @auth(USER_ID)
 async def browse(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.message.text.replace('/browse','')
+    message = update.message.text.replace('/browse', '')
     await application.bot.send_chat_action(update.effective_chat.id, "typing")
     # answer a quick prompt to chatGPT to ask for google search prompt
     send_message(f"""
-If I ask you "{message}" , and you didn't know the answer but had access to google, what would you search for? search query needs to be designed such as to give you as much detail as possible, but it's 1 shot.
+If I ask you "{message}" , and you didn't know the answer but had access to google, what would you search for? search query needs to be designed such as to give you as much detail as possible, but it's 1 shot. 
 Answer with
 x
 only, where x is the google search string that would let you help me answer the question
@@ -220,7 +212,7 @@ I want you to only reply with the output inside and nothing else. Do no write ex
     print(f'Clean response from chatGPT {response}')
     results = googleSearch(response)
     prompt = f"""
-    Pretend I was able to run a google search for "{message}" instead of you and I got the following results:
+    Pretend I was able to run a google search for "{message}" instead of you and I got the following results: 
     \"\"\"
     {results}
     \"\"\"
@@ -231,9 +223,14 @@ I want you to only reply with the output inside and nothing else. Do no write ex
     await check_loading(update)
     response = get_last_message()
     if "\[prompt:" in response:
-        await respond_with_image(update, response, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+        await respond_with_image(
+            update,
+            response,
+            parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
     else:
-        await update.message.reply_text(response, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+        await update.message.reply_text(
+            response, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+
 
 @auth(USER_ID)
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -245,7 +242,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if "\[prompt:" in response:
         await respond_with_image(update, response)
     else:
-        await update.message.reply_text(response, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+        await update.message.reply_text(
+            response, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+
 
 async def check_loading(update):
     #button has an svg of submit, if it's not there, it's likely that the three dots are showing an animation
@@ -256,52 +255,61 @@ async def check_loading(update):
     await application.bot.send_chat_action(update.effective_chat.id, "typing")
     start_time = time.time()
     while len(loading) > 0:
-        if time.time() - start_time > 90:
+        if time.time() - start_time > 180:
             break
         time.sleep(0.5)
         loading = submit_button.query_selector_all(".text-2xl")
-        await application.bot.send_chat_action(update.effective_chat.id, "typing")
+        await application.bot.send_chat_action(update.effective_chat.id,
+                                               "typing")
 
 
 def start_browser():
-    PAGE.goto("https://chat.openai.com/")
+    # PAGE.goto("https://chat.openai.com/")
     if not is_logged_in():
         print("Please log in to OpenAI Chat")
         print("Press enter when you're done")
-        
-        PAGE.locator("button", has_text="Log in").click()
+        input()
+    else:
 
-        username = PAGE.locator('input[name="username"]')
-        username.fill(OPEN_AI_EMAIL)
-        username.press("Enter")
+        # on different commands - answer in Telegram
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("reload", reload))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("draw", draw))
+        application.add_handler(CommandHandler("browse", browse))
+        application.add_handler(
+            CommandHandler("checkupdate", checkupdate_command))
 
-        password = PAGE.locator('input[name="password"]')
-        password.fill(OPEN_AI_PASSWORD)
-        password.press("Enter")
-        
-        # On first login
-        try:
-            next_button = PAGE.locator("button", has_text="Next")
-            next_button.click()
-            next_button = PAGE.locator("button", has_text="Next")
-            next_button.click()
-            next_button = PAGE.locator("button", has_text="Done")
-            next_button.click()
-        except:
-            pass
+        # on non command i.e message - echo the message on Telegram
+        application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("reload", reload))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("draw", draw))
-    application.add_handler(CommandHandler("browse", browse))
+        application.run_polling()
 
-    # on non command i.e message - echo the message on Telegram
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+        # # Run the bot until the user presses Ctrl-C
 
-    # Run the bot until the user presses Ctrl-C
-    application.run_polling()
 
 if __name__ == "__main__":
-    start_browser()
+    import time
+    # 设置标记变量
+    error_flag = False
+
+    # 循环执行程序
+    while True:
+        # 在try语句块中执行程序
+        try:
+
+            # 在这里添加需要执行的Python代码
+            # 例如，执行一个函数：
+            start_browser()
+
+        # 在except语句块中捕获错误
+        except:
+            # 将标记变量设置为true，表示程序出现了错误
+            error_flag = True
+            print("An error occurred, restarting program...")
+
+        # 检查标记变量的值
+        if error_flag:
+            time.sleep(5)
+            # 如果程序出现了错误，则重新启动
